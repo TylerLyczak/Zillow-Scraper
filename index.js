@@ -12,47 +12,44 @@ const puppeteer = require('puppeteer');
     // Makes a page to load the mixer screen
     const page = await browser.newPage();
 
-    /*
-    // Makes a cookie to view mature streams
-    const cookie = {
-        'name': '_sde_allowedInSession',
-        'value': '1',
-        'domain': 'mixer.com',
-        'path': '/',
-        'Expires / Max-Age': 'Session',
-        'size': '22',
-        'priority': 'Medium',
-    };
-    */
-
-    // Sets the cookie
-    //await page.setCookie(cookie);
-
     await page.setRequestInterception(true);
     page.on('request', request => {
         request.continue();
     });
 
-    
     // Goes to the mixer page
     await page.goto('https://www.zillow.com/homes/60606_rb/',)
         .catch((e) => {console.log(e)});
     page.on('load', () => console.log('=====Page loaded!====='));
 
+    /*
+    // Makes a cookie to view mature streams
+    const cookie = {
+        'name': "https://www.zillow.com",
+        'personalization_id': "v1_hxpphgboDyeKXFReTcI23g==",
+        'KruxAddition': true,
+        'KruxPixel': true,
+        'zgsession': '1|45e97927-5f8f-47d5-94f1-67efc2f784ee',
+        'zjs_anonymous_id': '%22f6401f76-8d10-4064-affb-f4221be11e64%22',
+        'zjs_user_id': null
+    };
+    
+
+    // Sets the cookie
+    await page.setCookie(cookie);
+    */
 
     await page.waitForSelector('[class="photo-cards photo-cards_wow photo-cards_short"]');
 
-    //const count = await page.$$eval('li', li => li.length);
-    //console.log(count);
-
-    
-    
+    /*
+    // Store all of the articles, which are the apartments/condos for sale
     let content = await page.evaluate(() => {
         let divs = [...document.querySelectorAll('article')];
         return divs.map((div) => div.textContent);
     });
 
     for (let i=0; i<content.length; i++)    {
+        if (i!=7)   continue;
         
         let split = content[i].split(',');
         //console.log(split);
@@ -61,18 +58,113 @@ const puppeteer = require('puppeteer');
         let address = split[0];
         let zip_code = split[2].substring(4, 9);
 
+        // Get the number of bedrooms
         let bdIndex = content[i].indexOf('bd');
-        let bedroomNum = content[i].substring(bdIndex-2, bdIndex-1)
+        let bedroomNum = content[i].substring(bdIndex-2, bdIndex-1);
 
+        // Get the number of bathrooms
+        let baIndex = content[i].indexOf('ba');
+        let bathroomNum = content[i].substring(baIndex-2, baIndex-1);
+
+        // Get the value of the property
         let moneyStart = content[i].indexOf("$");
         let value = content[i].substring(moneyStart+1, bdIndex-2);
         value = value.replace(/,/g,"");
 
+        // Get the sqft of the property
+        let sqftIndex = content[i].indexOf('sqft');
+        let sqft = content[i].substring(baIndex+2, sqftIndex-1);
 
+        
         console.log(content[i]);
         console.log(split);
-        console.log(address + ":" + zip_code + ":" + bedroomNum + ":" + value);
+        //console.log(address + ":" + zip_code + ":" + bedroomNum + ":" + value);
+        console.log('address: ' + address);
+        console.log('zip-code: ' + zip_code);
+        console.log('value: ' + value);
+        console.log('Number of bedrooms: ' + bedroomNum);
+        console.log('Number of bathrooms: ' + bathroomNum);
+        console.log('SQFT: ' + sqft);
+        console.log('\n');
         break;
+        
+    }
+    */
+
+    //const selectors = await page.$$('article');
+    //console.log(selectors.length)
+    //console.log(content.length)
+    //selectors.forEach( (element) => { console.log(element); });
+
+    const data = await page.evaluate(() => {
+        const tds = Array.from(document.querySelectorAll('article'))
+        return tds.map(td => {
+           //var txt = td.innerHTML;
+           return td.innerText.trim();
+        });
+    });
+  
+    //console.log(data);
+    for (var i=0; i<data.length; i++)   {
+        //if (i!=7)   continue;
+        //console.log(data[i]);
+        //console.log(typeof data[i]);
+
+        // Break up the newlines from the string
+        let strArr = data[i].split('\n');
+        
+        // Get the address
+        let addressArr = strArr[0].split(',');
+        let address = addressArr[0]
+
+        // Get the zip code
+        let zipArr = addressArr[addressArr.length-1].trim()
+        zipArr = zipArr.split(" ");
+        let zip_code = zipArr[zipArr.length-1]
+
+        // Get the value
+        let value = strArr[2].replace(/\D/g,'');
+
+        // Get the number of bedrooms
+        // Some don't have bedrooms, so account for it
+        let bedroomNum = "null"
+        let bdIndex = strArr[3].indexOf('bd')
+        if (bdIndex != 0)   {
+            bedroomNum = strArr[3].substring(0, bdIndex-1);
+            bedroomNum = bedroomNum.replace(/\D/g,'');
+
+            if (bedroomNum == "")   bedroomNum = "null";
+        }
+
+        // Get the number of bathrooms
+        // Some don't have bathrooms, so account for it
+        let bathroomNum = "null"
+        let baIndex = strArr[3].indexOf('ba')
+        if (baIndex != 0)   {
+            bathroomNum = strArr[3].substring(baIndex-2, baIndex-1);
+
+            bathroomNum = bathroomNum.replace(/\D/g,'');
+
+            if (bathroomNum == "")   bathroomNum = "null";
+        }
+
+        // Get the sqft of the property
+        // Some dont have sqft, so account for it
+        const sqftIndex = strArr[3].indexOf('sqft');
+        let sqft = strArr[3].substring(baIndex+2, sqftIndex-1).replace(/\D/g,'')
+        
+        if (sqft == "") sqft = "null";
+
+
+
+        console.log('address: ' + address);
+        console.log('zip-code: ' + zip_code);
+        console.log('value: ' + value);
+        console.log('Number of bedrooms: ' + bedroomNum);
+        console.log('Number of bathrooms: ' + bathroomNum);
+        console.log('SQFT: ' + sqft);
+        console.log('\n');
+        //break;
     }
     
 
