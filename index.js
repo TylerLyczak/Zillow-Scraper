@@ -1,226 +1,239 @@
 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const fs = require('fs');
+const userAgent = require('user-agents');
+
+function wait(ms) {
+    return new Promise(resolve => setTimeout(() => resolve(), ms));
+}
+
+
+fs.writeFile('data.csv', 'Address, Zip Code, Value, SQFT, Price Per SQFT, Number of Bedrooms, Number of bathrooms, Number of Full Bathrooms, Year Built, Heating, Cooling, Parking, Type, Has Garage, Number of Stories\n', function(err) {
+    if (err) throw err;
+    console.log("File created");
+});
+
+let initPage = 1;
+let initUrl = "https://www.zillow.com/chicago-il/" + initPage.toString() + "_p/";
+let numOfPages = 20;
 
 (async () => {
 
-    // Makes the browser for puppeteer to run on
-    const browser = await puppeteer.launch({
-        headless: false,
-        devtools: false,
-    });
+    let countAdded = 0;
+    let countSkip = 0;
+    let countTotal = 0;
 
-    // Makes a page to load the mixer screen
-    const page = await browser.newPage();
+    while (initPage <= numOfPages)  {
 
-    await page.setRequestInterception(true);
-    page.on('request', request => {
-        request.continue();
-    });
+        countAdded = 0;
+        countSkip = 0;
 
-    // Goes to the mixer page
-    await page.goto('https://www.zillow.com/homes/60606_rb/',)
-        .catch((e) => {console.log(e)});
-    page.on('load', () => console.log('=====Page loaded!====='));
+        console.log("Page: " + initPage);
 
-    /*
-    // Makes a cookie to view mature streams
-    const cookie = {
-        'name': "https://www.zillow.com",
-        'personalization_id': "v1_hxpphgboDyeKXFReTcI23g==",
-        'KruxAddition': true,
-        'KruxPixel': true,
-        'zgsession': '1|45e97927-5f8f-47d5-94f1-67efc2f784ee',
-        'zjs_anonymous_id': '%22f6401f76-8d10-4064-affb-f4221be11e64%22',
-        'zjs_user_id': null
-    };
-    
-
-    // Sets the cookie
-    await page.setCookie(cookie);
-    */
-
-    await page.waitForSelector('[class="photo-cards photo-cards_wow photo-cards_short"]');
-
-    /*
-    // Store all of the articles, which are the apartments/condos for sale
-    let content = await page.evaluate(() => {
-        let divs = [...document.querySelectorAll('article')];
-        return divs.map((div) => div.textContent);
-    });
-
-    for (let i=0; i<content.length; i++)    {
-        if (i!=7)   continue;
-        
-        let split = content[i].split(',');
-        //console.log(split);
-
-        // Get address and zip code based off of the split
-        let address = split[0];
-        let zip_code = split[2].substring(4, 9);
-
-        // Get the number of bedrooms
-        let bdIndex = content[i].indexOf('bd');
-        let bedroomNum = content[i].substring(bdIndex-2, bdIndex-1);
-
-        // Get the number of bathrooms
-        let baIndex = content[i].indexOf('ba');
-        let bathroomNum = content[i].substring(baIndex-2, baIndex-1);
-
-        // Get the value of the property
-        let moneyStart = content[i].indexOf("$");
-        let value = content[i].substring(moneyStart+1, bdIndex-2);
-        value = value.replace(/,/g,"");
-
-        // Get the sqft of the property
-        let sqftIndex = content[i].indexOf('sqft');
-        let sqft = content[i].substring(baIndex+2, sqftIndex-1);
-
-        
-        console.log(content[i]);
-        console.log(split);
-        //console.log(address + ":" + zip_code + ":" + bedroomNum + ":" + value);
-        console.log('address: ' + address);
-        console.log('zip-code: ' + zip_code);
-        console.log('value: ' + value);
-        console.log('Number of bedrooms: ' + bedroomNum);
-        console.log('Number of bathrooms: ' + bathroomNum);
-        console.log('SQFT: ' + sqft);
-        console.log('\n');
-        break;
-        
-    }
-    */
-
-    //const selectors = await page.$$('article');
-    //console.log(selectors.length)
-    //console.log(content.length)
-    //selectors.forEach( (element) => { console.log(element); });
-
-    const data = await page.evaluate(() => {
-        const tds = Array.from(document.querySelectorAll('article'))
-        return tds.map(td => {
-           //var txt = td.innerHTML;
-           return td.innerText.trim();
+        // Makes the browser for puppeteer to run on
+        const browser = await puppeteer.launch({
+            headless: false,
+            devtools: false,
         });
-    });
-  
-    //console.log(data);
-    for (var i=0; i<data.length; i++)   {
-        //if (i!=7)   continue;
-        //console.log(data[i]);
-        //console.log(typeof data[i]);
+    
+        // Makes a page to load the mixer screen
+        const page = await browser.newPage();
+    
+        await page.setRequestInterception(true);
+    
+        page.on('request', (request) => {
+            if (request.resourceType() === 'image') request.abort();
+            else request.continue();
+        });
+            
+        //await page.goto('https://www.zillow.com/homes/Chicago,-IL_rb/', {timeout:0});
+        await page.goto(initUrl);
+    
+        await page.setViewport({ width: 800, height: 600 });
+    
+        await page.waitForSelector('[class="photo-cards photo-cards_wow photo-cards_short"]', {timeout:0});
+    
+        await wait(2000);
 
-        // Break up the newlines from the string
-        let strArr = data[i].split('\n');
-        
-        // Get the address
-        let addressArr = strArr[0].split(',');
-        let address = addressArr[0]
+        // Wait for listings to be loaded
+        await page.waitForSelector('[class="photo-cards photo-cards_wow photo-cards_short"]', {timeout:0});
 
-        // Get the zip code
-        let zipArr = addressArr[addressArr.length-1].trim()
-        zipArr = zipArr.split(" ");
-        let zip_code = zipArr[zipArr.length-1]
+        // Get all of the houses
+        const getThemAll = await page.$$('[class="list-card list-card_not-saved"]');
 
-        // Get the value
-        let value = strArr[2].replace(/\D/g,'');
+        countTotal = getThemAll.length;
 
-        // Get the number of bedrooms
-        // Some don't have bedrooms, so account for it
-        let bedroomNum = "null"
-        let bdIndex = strArr[3].indexOf('bd')
-        if (bdIndex != 0)   {
-            bedroomNum = strArr[3].substring(0, bdIndex-1);
-            bedroomNum = bedroomNum.replace(/\D/g,'');
+        // Loop through all of the houses
+        for (var i=0; i<getThemAll.length; i++)  {
+            await wait(500);
 
-            if (bedroomNum == "")   bedroomNum = "null";
+            // Get the element from the array
+            const elem = getThemAll[i];
+
+            // Make a promis and click on it
+            await Promise.all([
+                elem.click()
+                //page.waitForNavigation({waitUntil: 'networkidle0'})
+            ]);
+
+            // Wait for the 'Facts and Features' section to load
+            await page.waitForSelector('[class="ds-home-fact-list"]', {timeout:0});
+
+            let type = "null";
+            let yearBuilt = "null";
+            let heating = "null";
+            let cooling = "null";
+            let parking = "null";
+            let pricePerSqft = "null";
+            let price = "null";
+            let address = "null";
+            let zip_code = "null";
+            let bedroomNum = "null";
+            let bathroomNum = "null";
+            let fullBathroomNum = "null";
+            let hasGarage = "null";
+            let sqft = "null";
+            let stories = "null";
+
+            const addrAndZip = await page.evaluate(
+                () => Array.from(
+                document.querySelectorAll('h1'),
+                a => a.innerText.trim()
+                )
+            );
+            
+            let addrAndZipArr = addrAndZip[0].split(',');
+            address = addrAndZipArr[0]
+            address = address.replace(/,/g, "");
+            zip_code = addrAndZipArr[2].slice((" IL ").length, addrAndZipArr[2].length);
+            zip_code = zip_code.replace(/\D/g,'');
+
+            if (address.includes("Floor plan:") || address.includes("Undisclosed Address") || address.includes("plan")) {
+                await wait(500);
+                await page.goBack({waitUntil: 'networkidle0'});
+                countSkip ++;
+                continue;
+            }
+            
+            let text = await page.evaluate(
+                () => Array.from(
+                    document.querySelectorAll('[class="Text-c11n-8-11-1__aiai24-0 hqfqED"]'), 
+                    element => element.textContent)
+            );
+
+            let titles = await page.evaluate(
+                () => Array.from(
+                    document.querySelectorAll('[class="Text-c11n-8-11-1__aiai24-0 sc-pTWqp jMCspH"]'), 
+                    element => element.textContent)
+            );
+
+            text.shift();
+
+            for (var j=0; j<titles.length; j++) {
+
+                if (titles[j] == "Type: ")  {
+                    type = text[j]
+                }
+                else if (titles[j] == "Year Built: ")    {
+                    yearBuilt = text[j]
+                }
+                else if (titles[j] == "Heating: ")   {
+                    heating = text[j]
+                }
+                else if (titles[j] == "Cooling: ")   {
+                    cooling = text[j]
+                }
+                else if (titles[j] == "Parking: ")   {
+                    parking = text[j]
+                }
+                else if (titles[j] == "Price/sqft: ")    {
+                    pricePerSqft = text[j]
+                }
+            }
+
+            text = text.slice(titles.length, text.length);
+
+            for (var j=0; j<text.length; j++)   {
+
+                if (text[j].includes("Bedrooms: ")) {
+                    bedroomNum = text[j].slice(("Bedrooms: ").length, text[j].length);
+                    bedroomNum = bedroomNum.replace(/\D/g,'');
+                }
+                else if (text[j].includes("Full bathrooms: "))  {
+                    fullBathroomNum = text[j].slice(("Full bathrooms: ").length, text[j].length);
+                    fullBathroomNum = fullBathroomNum.replace(/\D/g,'');
+                }
+                else if (text[j].includes("Bathrooms: "))   {
+                    bathroomNum = text[j].slice(("Bathrooms: ").length, text[j].length);
+                    bathroomNum = bathroomNum.replace(/\D/g,'');
+                }
+                else if (text[j].includes("Has garage: "))  {
+                    hasGarage = text[j].slice(("Has garage: ").length, text[j].length);
+                }
+                else if (text[j].includes("Total interior livable area: ")) {
+                    sqft = text[j].slice(("Total interior livable area: ").length, text[j].length-(" sqft").length);
+                    sqft = sqft.replace(/\D/g,'');
+                }
+                else if (text[j].includes("Stories: ")) {
+                    stories = text[j].slice(("Stories: ").length, text[j].length);
+                    stories = stories.replace(/\D/g,'');
+                }
+            }
+
+            // Get the price
+            const ele = await page.$(".ds-summary-row-content");
+            const valueNotFormat = await page.evaluate(ele => ele.textContent, ele);
+            const value = (valueNotFormat.substring(1, (valueNotFormat.indexOf(" bd")-1))).replace(/\D/g,'');
+
+            /*
+            console.log(address)
+            console.log(zip_code)
+            console.log(price)
+            console.log(sqft)
+            console.log(pricePerSqft)
+            console.log(bedroomNum)
+            console.log(bathroomNum)
+            console.log(fullBathroomNum)
+            console.log(yearBuilt)
+            console.log(heating)
+            console.log(cooling)
+            console.log(parking)
+            console.log(type)
+            console.log(hasGarage)
+            console.log(stories)
+            */
+            
+
+            intPrice = parseInt(value);
+            intSqft = parseInt(sqft);
+            if (intSqft != 0)   {
+                pricePerSqft = intPrice/intSqft
+                pricePerSqft = Math.round(pricePerSqft)
+            }
+
+            
+            fs.appendFile('data.csv', address + "," + zip_code + "," + value + "," + sqft + "," + pricePerSqft + "," + bedroomNum + "," + 
+                bathroomNum + "," + fullBathroomNum + "," + yearBuilt + "," + heating + "," + cooling + "," + parking + "," + 
+                type + "," + hasGarage + "," + stories + "\n", function(err)  {
+                if (err) throw err;
+                //console.log('Appened');
+            });
+            
+
+            await wait(500);
+            await page.goBack({waitUntil: 'networkidle0'});
+            //await wait(1000);
+            countAdded++;
         }
 
-        // Get the number of bathrooms
-        // Some don't have bathrooms, so account for it
-        let bathroomNum = "null"
-        let baIndex = strArr[3].indexOf('ba')
-        if (baIndex != 0)   {
-            bathroomNum = strArr[3].substring(baIndex-2, baIndex-1);
-
-            bathroomNum = bathroomNum.replace(/\D/g,'');
-
-            if (bathroomNum == "")   bathroomNum = "null";
-        }
-
-        // Get the sqft of the property
-        // Some dont have sqft, so account for it
-        const sqftIndex = strArr[3].indexOf('sqft');
-        let sqft = strArr[3].substring(baIndex+2, sqftIndex-1).replace(/\D/g,'')
+        console.log("Appended: " + countAdded);
+        console.log("Skipped: " + countSkip);
+        console.log("Total: " + countTotal);
         
-        if (sqft == "") sqft = "null";
-
-
-
-        console.log('address: ' + address);
-        console.log('zip-code: ' + zip_code);
-        console.log('value: ' + value);
-        console.log('Number of bedrooms: ' + bedroomNum);
-        console.log('Number of bathrooms: ' + bathroomNum);
-        console.log('SQFT: ' + sqft);
-        console.log('\n');
-        //break;
+        await browser.close();
+        console.log("new browser");
+        initPage = initPage + 1;
+        initUrl = "https://www.zillow.com/chicago-il/" + initPage.toString() + "_p/";
+        await wait(1000);
     }
-    
-
-
-
-    /*
-    // Click on the sign-in button
-    await page.waitForSelector('[class="mdsButton_Kaw7D contained_2JbA5 signInButton_3fCKe"]');
-    await page.click ('[class="mdsButton_Kaw7D contained_2JbA5 signInButton_3fCKe"]');
-
-    // Click on the sign-in with microsoft button
-    await page.waitForSelector('[class="mdsButton_Kaw7D showFocus_2wbiS signInBtn_1WMJ-"]');
-    const newPagePromise = new Promise(x => page.once('popup', x));
-    await page.click ('[class="mdsButton_Kaw7D showFocus_2wbiS signInBtn_1WMJ-"]');
-
-    // Pop-up window opens
-    const newPage = await newPagePromise;
-
-    // Enter email address into field
-    await newPage.waitForSelector('[type="email"]');
-    await newPage.$eval('input[type="email"]', (el, value) => el.value = value, email_address);
-
-    // Click the submit button
-    await newPage.click('input[type="submit"]');
-
-    // Type in the password
-    await newPage.waitForSelector('[value="Sign in"]');
-    await newPage.$eval('input[type="password"]', (el, value) => el.value = value, password);
-
-    // Click the signin button
-    await newPage.click('input[type="submit"]');
-
-    // Now we are signed-in, go to the paladins stream
-    await page.goto('https://mixer.com/browse/categories/1386',)
-        .catch((e) => {console.log(e)});
-
-    // Load the page of all Paladin games
-    await page.waitForSelector('[class="contentGridGroup_1iaee"]');
-
-    // Click on the first page on the streams list
-    await page.click('[class="container_ZqIuE cardStyle_8PoHy"]');
-
-    // Interval function to keep refreshing every 10 minutes
-    setInterval( async () => {
-        // Now we are signed-in, go to the paladins stream
-        await page.goto('https://mixer.com/browse/categories/1386',)
-            .catch((e) => {console.log(e)});
-
-        // Load the page of all Paladin games
-        await page.waitForSelector('[class="contentGridGroup_1iaee"]');
-
-        // Click on the first page on the streams list
-        await page.click('[class="container_ZqIuE cardStyle_8PoHy"]');
-    }, 600000);
-    */
-
-    await browser.close();
-    
 })();
